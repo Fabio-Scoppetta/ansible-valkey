@@ -1,0 +1,75 @@
+---
+- name: Redis group
+  group:
+    name: redis
+    state: present
+  become: yes
+      
+- name: Create redis user
+  user:
+    name: redis
+    group: redis
+    shell: /sbin/nologin
+    system: yes
+    state: present
+    create_home: no
+  become: yes
+
+- name: Create redis directory
+  file: 
+    path: "{{ item }}"
+    state: directory
+    mode: 0755
+    owner: redis
+  with_items:
+    - /var/log/redis
+    - /etc/valkey
+  become: yes
+
+- name: Desabilitar serviços desnecessários
+  systemd:
+    name: "{{ item }}"
+    enabled: false
+    state: stopped
+  loop:
+    - avahi-daemon
+    - cups
+    - rpcbind
+  ignore_errors: yes
+
+- name: Garantir permissões seguras em /tmp
+  mount:
+    path: /tmp
+    fstype: tmpfs
+    opts: defaults,noexec,nosuid,nodev
+    state: mounted
+
+- name: Configurar limites de arquivos para o usuário do Valkey
+  copy:
+    dest: /etc/security/limits.d/valkey.conf
+    content: |
+      {{ valkey_user }} soft nofile 65536
+      {{ valkey_user }} hard nofile 65536
+
+
+- name: Install Valkey
+  yum:
+    name: valkey
+    state: latest 
+  become: yes
+
+- name: configure Valkey
+  template:
+    src: valkey.conf.j2
+    dest: /etc/valkey/valkey.conf
+    owner: redis
+    group: redis
+    mode: 0644
+  become: yes
+
+- name: Start Valkey
+  service:
+    name: valkey
+    state: started
+    enabled: yes
+  become: yes
